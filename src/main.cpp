@@ -255,6 +255,7 @@ void handleAnalog() {
 
   if( ++pos == sizeof(a)/sizeof(*a) ) {
     pos = 0;
+    delay(5); // needed for wifi !?
   }
 
   a_sum -= a[pos];

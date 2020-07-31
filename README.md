@@ -2,6 +2,22 @@
 
 use an ESP8266, an ADS1115, two NTCs, an SSR and a cheap electrical toaster grill to build an SMD PCB reflow oven
 
+## Status
+
+Work in progress.
+
+* a pwm style duty cycle of the SSR can be controlled via webserver
+* OTA is working to avoid touching high voltage stuff
+* Syslog does not work. Loosing Wifi connection if I enable it :(
+* Theory for temperature measuring is mostly done (see below). Waiting for ADS1115...
+
+## TODO
+* verify temperature measurement actually works
+* feedback loop to follow set temperature
+* define temperature profile via web page
+* means to store/retrieve profiles (could be spiffs, EEPROM, MQTT persistent topics, ...)
+* Provide status via Neopixel colors, mqtt, webpage
+
 ## NTC Temperature measurement
 
 Formula for getting temperature in K from measuring Rntc

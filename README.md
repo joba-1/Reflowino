@@ -21,15 +21,16 @@ Work in progress.
 ## NTC Temperature measurement
 
 Formula for getting temperature in K from measuring Rntc
-T = 1 / (1/Tn + ln(Rt/Rn)/B)  (1)
 
-Tn = Temperature where Rntc = Rn. Usually 25°C -> 298.15K, but check datasheet to be sure.
-Rn = NTC Resistance at Tn. Usually 10k .. 100k. Better measure yourself, can differ quite a bit from datasheet.
-B = B-constant from datasheet. Often 3950 K.
-Rt = measured resistance
+    T = 1 / (1/Tn + ln(Rt/Rn)/B)  (1)
 
-Rt,min = Rn * e^(B/Tmin - B/Tn)  with Tmin = 0°C   -> Rt,min ~ 340k
-Rt,max = Rn * e^(B/Tmax - B/Tn)  with Tmax = 260°C -> Rt,max ~ 290
+* Tn = Temperature where Rntc = Rn. Usually 25°C -> 298.15K, but check datasheet to be sure.
+* Rn = NTC Resistance at Tn. Usually 10k .. 100k. Better measure yourself, can differ quite a bit from datasheet.
+* B = B-constant from datasheet. Often 3950 K.
+* Rt = measured resistance
+
+    Rt,min = Rn * e^(B/Tmin - B/Tn)  with Tmin = 0°C   -> Rt,min ~ 340k
+    Rt,max = Rn * e^(B/Tmax - B/Tn)  with Tmax = 260°C -> Rt,max ~ 290
 
 ### Using an ADS1115
 
@@ -37,9 +38,9 @@ Using an ADS1115 you can compare Vcc to Vntc like the following sketch.
 Since using Va3 as Varef === 0 it eliminates errors at Vax due to Vcc fluctuations.
 Comparing Ax to A3 with A3 === 0 gives Ax ~ 0 for very high Rntc and Ax ~ -Amax for very low Rtc.
 
-Vcc ---+--- Rv ---+--- Rntc --- Gnd 
-       |          |
-       A3         Ax (Vcc=0...-32667=Gnd)
+    Vcc ---+--- Rv ---+--- Rntc --- Gnd 
+           |          |
+           A3         Ax (Vcc=0...-32667=Gnd)
 
 Voltage divider and some algebra with ohms law gives
 
@@ -56,21 +57,23 @@ To be tested: readings for Tmin and Tmax
 
 This method is less accurate, but maybe good enough for the usecase:
 
-                          ADC
-                           |
-              +--- 220k ---+--- 100k --- Gnd
-              |
-              A0 (Vcc=1023...0=Gnd)
-              |
-Vcc --- Rv ---+--- Rntc --- Gnd
+                              ADC
+                               |
+                  +--- 220k ---+--- 100k --- Gnd
+                  |
+                  A0 (Vcc=1023...0=Gnd)
+                  |
+    Vcc --- Rv ---+--- Rntc --- Gnd
 
-Vcc/(Rv+Rntc) = Vntc/Rntc                | * (Rv+Rntc) * Rntc
--> Vcc * Rntc = Vntc * Rv + Vntc * Rntc  | - (Vntc * Rntc)        
--> Rntc * (Vcc-Vntc) = Rv * Vntc         | / (Vcc-Vntc)
--> Rntc = Rv * Vntc/(Vcc-Vntc)           | * (1/Vcc)/(1/Vcc)
--> Rntc = Rv * Vntc/Vcc/(1 - Vntc/Vcc)   | Vntc/Vcc = A0/Amax (Amax = 1023)
--> Rntc = Rv * A0/1023 / (1-A0/1023)     | * (1023/1023)
--> Rntc = Rv * A0 / (1023 - A0)
+Calculation
+
+    Vcc/(Rv+Rntc) = Vntc/Rntc                | * (Rv+Rntc) * Rntc
+    -> Vcc * Rntc = Vntc * Rv + Vntc * Rntc  | - (Vntc * Rntc)        
+    -> Rntc * (Vcc-Vntc) = Rv * Vntc         | / (Vcc-Vntc)
+    -> Rntc = Rv * Vntc/(Vcc-Vntc)           | * (1/Vcc)/(1/Vcc)
+    -> Rntc = Rv * Vntc/Vcc/(1 - Vntc/Vcc)   | Vntc/Vcc = A0/Amax (Amax = 1023)
+    -> Rntc = Rv * A0/1023 / (1-A0/1023)     | * (1023/1023)
+    -> Rntc = Rv * A0 / (1023 - A0)
 
 Solve for A0 to do some test calculations
 

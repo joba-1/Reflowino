@@ -198,7 +198,6 @@ void handleWifi() {
 
       MDNS.begin(NAME);
 
-      esp_updater.onStart();
       esp_updater.setup(&web_server);
       webserverSetup();
 

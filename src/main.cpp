@@ -31,6 +31,10 @@ ESP8266HTTPUpdateServer esp_updater;
 
 uint16_t duty = 0;
 
+int a[16] = { 0 }; // last analog reads
+long a_sum = 0;    // sum of last analog reads
+
+
 // Default html menu page
 void send_menu( const char *msg ) {
   static const char header[] = "<!doctype html>\n"
@@ -71,7 +75,8 @@ void send_menu( const char *msg ) {
       "<body>\n"
         "<h1>Reflowino Web Remote Control</h1>\n"
         "<p>Control the Reflow Oven</p>\n";
-  static const char form[] = "<p>%s</p>"
+  static const char form[] = "<p>%s</p>\n"
+        "<p>Analog: %ld</p>\n"
         "<table><tr><td>\n"
           "<form action=\"/set\">\n"
             "<label for=\"duty\">Duty [%%]:</label>\n"
@@ -94,10 +99,10 @@ void send_menu( const char *msg ) {
         "</table>\n"
       "</body>\n"
     "</html>\n";
-  static char page[sizeof(form)+256]; // page + msg
+  static char page[sizeof(form)+256]; // form + variables
 
   size_t len = sizeof(header) + sizeof(footer) - 2;
-  len += snprintf(page, sizeof(page), form, msg, duty);
+  len += snprintf(page, sizeof(page), form, msg, a_sum, duty);
 
   web_server.setContentLength(len);
   web_server.send(200, "text/html", header);
@@ -107,7 +112,7 @@ void send_menu( const char *msg ) {
 
 
 // Initiate connection to Wifi but dont wait for it to be established
-void wifiSetup() {
+void setup_Wifi() {
   WiFi.mode(WIFI_STA);
   WiFi.hostname(NAME);
   WiFi.begin(SSID, PASS);
@@ -117,7 +122,7 @@ void wifiSetup() {
 
 
 // Define web pages for update, reset or for configuring parameters
-void webserverSetup() {
+void setup_Webserver() {
 
   // Call this page to see the ESPs firmware version
   web_server.on("/version", []() {
@@ -199,7 +204,7 @@ void handleWifi() {
       MDNS.begin(NAME);
 
       esp_updater.setup(&web_server);
-      webserverSetup();
+      setup_Webserver();
 
       Serial.println("Update with curl -F 'image=@firmware.bin' " NAME ".local/update");
 
@@ -245,6 +250,19 @@ void handleDuty( unsigned duty ) {
 }
 
 
+void handleAnalog() {
+  static uint16_t pos = 0;
+
+  if( ++pos == sizeof(a)/sizeof(*a) ) {
+    pos = 0;
+  }
+
+  a_sum -= a[pos];
+  a[pos] = analogRead(A0);
+  a_sum += a[pos];
+}
+
+
 void setup() {
   // start with switch off:
   pinMode(SWITCH_PIN, OUTPUT);
@@ -253,7 +271,7 @@ void setup() {
   Serial.begin(115200);
 
   // Initiate network connection (but dont wait for it)
-  wifiSetup();
+  setup_Wifi();
 
   // Syslog setup
   // syslog.server(SYSLOG_SERVER, SYSLOG_PORT);
@@ -280,6 +298,7 @@ void setup() {
 
 
 void loop() {
+  handleAnalog();
   handleDuty(duty);
   handleWifi();
 }

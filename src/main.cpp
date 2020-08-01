@@ -33,7 +33,7 @@ uint16_t duty = 0;
 
 int a[16] = { 0 }; // last analog reads
 long a_sum = 0;    // sum of last analog reads
-
+long r_ntc = 0;    // resistance updated with each analog read
 
 // Default html menu page
 void send_menu( const char *msg ) {
@@ -76,7 +76,7 @@ void send_menu( const char *msg ) {
         "<h1>Reflowino Web Remote Control</h1>\n"
         "<p>Control the Reflow Oven</p>\n";
   static const char form[] = "<p>%s</p>\n"
-        "<p>Analog: %ld</p>\n"
+        "<p>NTC resistance: %ld (Analog: %ld)</p>\n"
         "<table><tr><td>\n"
           "<form action=\"/set\">\n"
             "<label for=\"duty\">Duty [%%]:</label>\n"
@@ -102,7 +102,7 @@ void send_menu( const char *msg ) {
   static char page[sizeof(form)+256]; // form + variables
 
   size_t len = sizeof(header) + sizeof(footer) - 2;
-  len += snprintf(page, sizeof(page), form, msg, a_sum, duty);
+  len += snprintf(page, sizeof(page), form, msg, r_ntc, a_sum, duty);
 
   web_server.setContentLength(len);
   web_server.send(200, "text/html", header);
@@ -250,6 +250,14 @@ void handleDuty( unsigned duty ) {
 }
 
 
+void updateResistance() {
+  static const long R_v = 100000;
+  static const long Max_sum = 1023L * sizeof(a)/sizeof(*a);
+
+  r_ntc = R_v * a_sum / (Max_sum - a_sum);
+}
+
+
 void handleAnalog() {
   static uint16_t pos = 0;
 
@@ -261,6 +269,8 @@ void handleAnalog() {
   a_sum -= a[pos];
   a[pos] = analogRead(A0);
   a_sum += a[pos];
+
+  updateResistance();
 }
 
 

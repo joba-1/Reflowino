@@ -15,8 +15,10 @@
 
 #include "config.h"
 
+#include <math.h> // for log()
+
 #ifndef VERSION
-  #define VERSION   NAME " 1.2 " __DATE__ " " __TIME__
+  #define VERSION   NAME " 1.3 " __DATE__ " " __TIME__
 #endif
 
 // Syslog
@@ -29,11 +31,20 @@ ESP8266WebServer web_server(PORT);
 
 ESP8266HTTPUpdateServer esp_updater;
 
-uint16_t duty = 0;
+uint16_t duty = 0; // percent
 
 int a[16] = { 0 }; // last analog reads
 long a_sum = 0;    // sum of last analog reads
-long r_ntc = 0;    // resistance updated with each analog read
+
+// NTC characteristics (datasheet)
+static const long B = 3950;
+static const long R_n = 100000; // Ohm
+static const long T_n = 25;     // Celsius
+
+static const long R_v = 100000; // Ohm, voltage divider resistor
+
+long r_ntc = 0;           // Ohm, resistance updated with each analog read
+double temperature_c = 0; // Celsius, calculated from NTC and R_v
 
 // Default html menu page
 void send_menu( const char *msg ) {
@@ -76,7 +87,7 @@ void send_menu( const char *msg ) {
         "<h1>Reflowino Web Remote Control</h1>\n"
         "<p>Control the Reflow Oven</p>\n";
   static const char form[] = "<p>%s</p>\n"
-        "<p>NTC resistance: %ld (Analog: %ld)</p>\n"
+        "<p>Temperature: %5.1f &#8451;,  NTC resistance: %ld &#8486;,  Analog: %ld</p>\n"
         "<table><tr>\n"
           "<form action=\"/set\">\n"
             "<td><label for=\"duty\">Duty %%:</label></td>\n"
@@ -102,7 +113,7 @@ void send_menu( const char *msg ) {
   static char page[sizeof(form)+256]; // form + variables
 
   size_t len = sizeof(header) + sizeof(footer) - 2;
-  len += snprintf(page, sizeof(page), form, msg, r_ntc, a_sum, duty);
+  len += snprintf(page, sizeof(page), form, msg, temperature_c, r_ntc, a_sum, duty);
 
   web_server.setContentLength(len);
   web_server.send(200, "text/html", header);
@@ -250,11 +261,17 @@ void handleDuty( unsigned duty ) {
 }
 
 
+void updateTemperature() {
+  temperature_c = 1.0 / (1.0/(273.15+T_n) + log((double)r_ntc/R_n)/B) - 273.15;
+}
+
+
 void updateResistance() {
-  static const long R_v = 100000;
   static const long Max_sum = 1023L * sizeof(a)/sizeof(*a);
 
   r_ntc = R_v * a_sum / (Max_sum - a_sum);
+
+  updateTemperature();
 }
 
 

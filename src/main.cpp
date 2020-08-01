@@ -141,6 +141,12 @@ void setup_Webserver() {
     send_menu(VERSION);
   });
 
+  web_server.on("/temperature", []() {
+    char msg[10];
+    snprintf(msg, sizeof(msg), "%5.1f", temperature_c);
+    web_server.send(200, "text/plain", msg);
+  });
+
   // Set duty cycle
   web_server.on("/set", []() {
     if( web_server.arg("duty") != "" ) {

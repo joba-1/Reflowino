@@ -77,12 +77,12 @@ void send_menu( const char *msg ) {
         "<p>Control the Reflow Oven</p>\n";
   static const char form[] = "<p>%s</p>\n"
         "<p>NTC resistance: %ld (Analog: %ld)</p>\n"
-        "<table><tr><td>\n"
+        "<table><tr>\n"
           "<form action=\"/set\">\n"
-            "<label for=\"duty\">Duty [%%]:</label>\n"
-            "<input id=\"duty\", name=\"duty\" type=\"range\" min=\"0\" max=\"100\" value=\"%u\"/>\n"
-            "<button>Set</button>\n"
-          "</form></td><td>\n";
+            "<td><label for=\"duty\">Duty %%:</label></td>\n"
+            "<td colspan=\"2\"><input id=\"duty\", name=\"duty\" type=\"range\" min=\"0\" max=\"100\" value=\"%u\"/></td>\n"
+            "<td><button>Set</button></td>\n"
+          "</form></tr><tr><td>\n";
   static const char footer[] =
           "<form action=\"/on\">\n"
             "<button>ON</button>\n"

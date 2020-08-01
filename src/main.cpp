@@ -33,17 +33,17 @@ ESP8266HTTPUpdateServer esp_updater;
 
 uint16_t duty = 0; // percent
 
-int a[16] = { 0 }; // last analog reads
-long a_sum = 0;    // sum of last analog reads
+int32_t a[2048] = { 0 }; // last analog reads
+int32_t a_sum = 0;      // sum of last analog reads
 
 // NTC characteristics (datasheet)
-static const long B = 3950;
-static const long R_n = 100000; // Ohm
-static const long T_n = 25;     // Celsius
+static const int32_t B = 3950;
+static const int32_t R_n = 100000; // Ohm
+static const int32_t T_n = 25;     // Celsius
 
-static const long R_v = 100000; // Ohm, voltage divider resistor
+static const int32_t R_v = 100000; // Ohm, voltage divider resistor
 
-long r_ntc = 0;           // Ohm, resistance updated with each analog read
+int32_t r_ntc = 0;        // Ohm, resistance updated with each analog read
 double temperature_c = 0; // Celsius, calculated from NTC and R_v
 
 // Default html menu page
@@ -53,6 +53,7 @@ void send_menu( const char *msg ) {
       "<head>\n"
         "<meta charset=\"utf-8\">\n"
         "<meta name=\"keywords\" content=\"Reflowino, SSR, remote, meta\">\n"
+        "<meta http-equiv=\"refresh\" content=\"10\">\n"
         "<title>Reflowino Web Remote Control</title>\n"
         "<style>\n"
           ".slidecontainer { width: 80%; }\n"
@@ -87,7 +88,7 @@ void send_menu( const char *msg ) {
         "<h1>Reflowino Web Remote Control</h1>\n"
         "<p>Control the Reflow Oven</p>\n";
   static const char form[] = "<p>%s</p>\n"
-        "<p>Temperature: %5.1f &#8451;,  NTC resistance: %ld &#8486;,  Analog: %ld</p>\n"
+        "<p>Temperature: %5.1f &#8451;,  NTC resistance: %d &#8486;,  Analog: %d</p>\n"
         "<table><tr>\n"
           "<form action=\"/set\">\n"
             "<td><label for=\"duty\">Duty %%:</label></td>\n"
@@ -262,30 +263,53 @@ void handleDuty( unsigned duty ) {
 
 
 void updateTemperature() {
+  // only print if measurement decimals change 
+  static int16_t t_prev = 0;
+
   temperature_c = 1.0 / (1.0/(273.15+T_n) + log((double)r_ntc/R_n)/B) - 273.15;
+
+  int16_t temp = (int16_t)(temperature_c * 100 + 0.5); // rounded centi celsius
+  if( (temp - t_prev) * (temp - t_prev) >= 10 * 10 ) { // only report changes >= 0.1
+    Serial.printf("Temperature: %01d.%01d degree Celsius\n", temp/100, (temp/10)%10);
+    t_prev = temp;
+  }
 }
 
 
 void updateResistance() {
   static const long Max_sum = 1023L * sizeof(a)/sizeof(*a);
 
-  r_ntc = R_v * a_sum / (Max_sum - a_sum);
+  r_ntc = (int64_t)R_v * a_sum / (Max_sum - a_sum);
 
   updateTemperature();
 }
 
 
 void handleAnalog() {
-  static uint16_t pos = 0;
+  static uint16_t pos = sizeof(a)/sizeof(*a);
 
-  if( ++pos == sizeof(a)/sizeof(*a) ) {
-    pos = 0;
-    delay(5); // needed for wifi !?
+  int value = analogRead(A0);
+
+  // first time init
+  if( pos == (sizeof(a)/sizeof(*a)) ) {
+    while( pos-- ) {
+      a[pos] = value;
+      a_sum += value;
+    }
   }
+  else {
+    if( ++pos >= (sizeof(a)/sizeof(*a)) ) {
+      pos = 0;
+    }
 
-  a_sum -= a[pos];
-  a[pos] = analogRead(A0);
-  a_sum += a[pos];
+    if( pos % 16 == 0 ) {
+      delay(10); // needed for wifi !?
+    }
+
+    a_sum -= a[pos];
+    a[pos] = value;
+    a_sum += a[pos];
+  }
 
   updateResistance();
 }

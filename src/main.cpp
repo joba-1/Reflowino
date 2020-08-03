@@ -31,20 +31,25 @@ ESP8266WebServer web_server(PORT);
 
 ESP8266HTTPUpdateServer esp_updater;
 
-uint16_t duty = 0; // percent
+uint16_t duty = 0; // ssr pwm percent
 
-int32_t a[2048] = { 0 }; // last analog reads
-int32_t a_sum = 0;      // sum of last analog reads
+// Analog read samples
+const uint16_t a_samples = 4000;
+const uint16_t a_max = 1023;
+uint32_t a_sum = 0;        // sum of last analog reads
 
 // NTC characteristics (datasheet)
-static const int32_t B = 3950;
-static const int32_t R_n = 100000; // Ohm
-static const int32_t T_n = 25;     // Celsius
+static const uint32_t B = 3950;
+static const uint32_t R_n = 100000; // Ohm
+static const uint32_t T_n = 25;     // Celsius
 
-static const int32_t R_v = 100000; // Ohm, voltage divider resistor
+static const uint32_t R_v = 8830; // Ohm, voltage divider resistor
 
-int32_t r_ntc = 0;        // Ohm, resistance updated with each analog read
-double temperature_c = 0; // Celsius, calculated from NTC and R_v
+uint32_t r_ntc = 0;        // Ohm, resistance updated with each analog read
+double temperature_c = 0;  // Celsius, calculated from NTC and R_v
+
+int16_t t[8640*2];         // 2 days centicelsius temperature history in 10s intervals
+uint16_t t_pos;
 
 // Default html menu page
 void send_menu( const char *msg ) {
@@ -147,6 +152,24 @@ void setup_Webserver() {
     web_server.send(200, "text/plain", msg);
   });
 
+  // TODO crashes...
+  web_server.on("/history.bin", []() {
+    char msg[30];
+    int len = snprintf(msg, sizeof(msg), "int16 centicelsius[%5u]:", sizeof(t)/sizeof(*t));
+    web_server.setContentLength(CONTENT_LENGTH_UNKNOWN); // len + sizeof(t)
+    web_server.send(200, "application/octet-stream", "");
+      web_server.sendContent(msg, len);
+    unsigned chunk = 1024;
+    char *pos = (char *)t;
+    char *end = pos + sizeof(t);
+    while( pos < end - chunk ) {
+      web_server.sendContent(pos, chunk);
+      pos += chunk;
+    }
+    web_server.sendContent(pos, end - pos);
+    web_server.sendContent("");
+  });
+
   // Set duty cycle
   web_server.on("/set", []() {
     if( web_server.arg("duty") != "" ) {
@@ -196,7 +219,7 @@ void setup_Webserver() {
   // Catch all page, gives a hint on valid URLs
   web_server.onNotFound([]() {
     web_server.send(404, "text/plain", "error: use "
-      "/on, /off, /reset, /version or "
+      "/on, /off, /reset, /version, /temperature, /history.bin or "
       "post image to /update\n");
   });
 
@@ -268,6 +291,30 @@ void handleDuty( unsigned duty ) {
 }
 
 
+void print_temperature_table() {
+  const uint32_t rv_10k  = 10000;
+  const uint32_t rv_100k = 100000;
+  double t_10k_prev  = 0.0;
+  double t_100k_prev = 0.0;
+
+  for( uint16_t a = 0; a < a_max; a++ ) {
+    uint32_t r_ntc_v10k  = rv_10k  * a / (a_max - a);
+    uint32_t r_ntc_v100k = rv_100k * a / (a_max - a);
+
+    double t_10k  = 1.0 / (1.0/(273.15+T_n) + log((double)r_ntc_v10k /R_n)/B) - 273.15;
+    double t_100k = 1.0 / (1.0/(273.15+T_n) + log((double)r_ntc_v100k/R_n)/B) - 273.15;
+
+    Serial.printf("%4u: t10= %5.1f t10diff= %5.1f t100diff= %5.1f t100= %5.1f\n", 
+      a, t_10k, t_10k-t_10k_prev, t_100k-t_100k_prev, t_100k);
+
+    t_10k_prev  = t_10k;
+    t_100k_prev = t_100k;
+
+    delay(1);
+  }
+}
+
+
 void updateTemperature() {
   // only print if measurement decimals change 
   static int16_t t_prev = 0;
@@ -283,7 +330,7 @@ void updateTemperature() {
 
 
 void updateResistance() {
-  static const long Max_sum = 1023L * sizeof(a)/sizeof(*a);
+  static const uint32_t Max_sum = (uint32_t)a_max * a_samples;
 
   r_ntc = (int64_t)R_v * a_sum / (Max_sum - a_sum);
 
@@ -292,29 +339,30 @@ void updateResistance() {
 
 
 void handleAnalog() {
-  static uint16_t pos = sizeof(a)/sizeof(*a);
+  static uint16_t a[a_samples] = { 0 }; // last analog reads
+  static uint16_t a_pos = a_samples;    // sample index
 
   int value = analogRead(A0);
 
   // first time init
-  if( pos == (sizeof(a)/sizeof(*a)) ) {
-    while( pos-- ) {
-      a[pos] = value;
-      a_sum += value;
+  if( a_pos == a_samples ) {
+    while( a_pos-- ) {
+      a[a_pos] = (uint16_t)value;
+      a_sum += (uint32_t)value;
     }
   }
   else {
-    if( ++pos >= (sizeof(a)/sizeof(*a)) ) {
-      pos = 0;
+    if( ++a_pos >= a_samples ) {
+      a_pos = 0;
     }
 
-    if( pos % 16 == 0 ) {
+    if( a_pos % 16 == 0 ) {
       delay(10); // needed for wifi !?
     }
 
-    a_sum -= a[pos];
-    a[pos] = value;
-    a_sum += a[pos];
+    a_sum -= a[a_pos];
+    a[a_pos] = (uint16_t)value;
+    a_sum += a[a_pos];
   }
 
   updateResistance();
@@ -351,12 +399,51 @@ void setup() {
     }
   }
 
+  // print_temperature_table();
+
   Serial.println("\nBooted " VERSION);
 }
 
 
+void handleFrequency() {
+  static uint32_t start = 0;
+  static uint32_t count = 0;
+
+  count++;
+
+  uint32_t now = millis();
+  if( now - start > 1000 ) {
+    printf("Measuring analog at %u Hz\n", count);
+    start = now;
+    count = 0;
+  }
+}
+
+
+void handleTempHistory() {
+  static bool first = true;
+  uint16_t temp = (int16_t)(temperature_c * 100 + 0.5); 
+  if( first ) {
+    t_pos = sizeof(t)/sizeof(*t);
+    while( --t_pos > 0 ) {
+      t[t_pos] = -30000;
+    }
+    t[t_pos] = temp;
+    first = false;
+  }
+  else {
+    if( ++t_pos >= sizeof(t)/sizeof(*t) ) {
+      t_pos = 0;
+    }
+    t[t_pos] = temp;
+  }
+}
+
+
 void loop() {
+  handleFrequency();
   handleAnalog();
+  handleTempHistory();
   handleDuty(duty);
   handleWifi();
 }

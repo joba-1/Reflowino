@@ -51,7 +51,7 @@ If Rv chosen to be same as Rn, then Vntc at Ax should be Vcc/2 at 25°C.
 Vcc/2 should result in Ax = -Amax/2. Put this Ax in (2) yields Rntc = Rv --> as expected.
 Put this Rntc as Rt in (1) gives T = 1 / (1/298.15 + 1/3950*ln(1)) = 298.15K = 25°C --> as expected.
 
-To be tested: readings for Tmin and Tmax
+Choosing Rv: 100k is good for low to medium range up to 150°C but 10k gives ~10x better resolution at the high temperatures around 250°C that we need. An Rv of 1k gives bad resolution at room temperature, so my Rv will be 10k.
 
 ### Using ESP8266 ADC via NodeMCU A0
 
@@ -75,12 +75,16 @@ Calculation
     -> Rntc = Rv * A0/1023 / (1-A0/1023)     | * (1023/1023)
     -> Rntc = Rv * A0 / (1023 - A0)
 
-Solve for A0 to do some test calculations
+Solve for A0 to do some test calculations: 
+    Rntc = Rv * A0 / (1023 - A0)       | * (1023 - A0)
+    -> Rntc * 1023 - Rntc * A0 = Rv * A0  | + (Rntc * A0)
+    -> Rntc * 1023 = (Rv + Rntc) * A0     | / (Rv + Rntc)
+    -> Rntc * 1023 / (Rv + Rntc) = A0 
 
 ## PID Loop or Bang Bang?
 
 I can only switch power on or off -> classic usecase for bang bang algorithm -> 
 switch on if below (Tset - lower tolerance) and switch off if above (Tset + upper tolerance).
-Choose tolerances such that T is close enough to Tset (-> low tolerances), switching is rare enough (-> high tolerances) and mean of T over an on/off cycle is as close as possible to Tset (-> since cooling is slower than heating, lower tolerance will be less than high tolerance).
+Choose tolerances such that T is close enough to Tset (-> low tolerances), switching is rare enough (-> high tolerances) and mean of T over an on/off cycle is as close as possible to Tset (-> since cooling is slower than heating, lower tolerance will be less than high tolerance). 
 
 But since I can switch on/off easily and relatively fast with SSR I can also do a kind of slow PWM and use that for PID control. Should result in T following Tset with less oscillation. Maybe that means even less stress on material, but could also mean more EMV due to more high power switching.

@@ -18,7 +18,7 @@
 #include <math.h> // for log()
 
 #ifndef VERSION
-  #define VERSION   NAME " 1.4 " __DATE__ " " __TIME__
+  #define VERSION   NAME " 1.5 " __DATE__ " " __TIME__
 #endif
 
 // Syslog
@@ -32,23 +32,25 @@ ESP8266WebServer web_server(PORT);
 ESP8266HTTPUpdateServer esp_updater;
 
 uint16_t _duty = 0;                 // ssr pwm percent
+bool _fixed_duty = true;           // true: decouple from temperature control
 
 // Analog read samples
-const uint16_t A_samples = 4000;
-const uint16_t A_max = 1023;
+const uint16_t A_samples = A_SAMPLES;
+const uint16_t A_max = A_MAX;
 uint32_t _a_sum = 0;                // sum of last analog reads
 
 // NTC characteristics (datasheet)
-static const uint32_t B = 3950;
-static const uint32_t R_n = 100000; // Ohm
-static const uint32_t T_n = 25;     // Celsius
+static const uint32_t B = NTC_B;
+static const uint32_t R_n = NTC_R_N; // Ohm
+static const uint32_t T_n = NTC_T_N; // Celsius
 
-static const uint32_t R_v = 8830;   // Ohm, voltage divider resistor
+static const uint32_t R_v = NTC_R_V; // Ohm, voltage divider resistor for NTC
 
 uint32_t _r_ntc = 0;                // Ohm, resistance updated with each analog read
 double _temp_c = 0;                 // Celsius, calculated from NTC and R_v
+uint16_t _temp_target = 100;        // adjust _duty to reach this temperature
 
-int16_t _t[8640*2];      // 2 days centicelsius temperature history in 10s intervals
+int16_t _t[8640];      // 1 day centicelsius temperature history in 10s intervals
 uint16_t _t_pos;
 
 
@@ -96,9 +98,14 @@ void send_menu( const char *msg ) {
   static const char form[] = "<p>%s</p>\n"
         "<p>Temperature: %5.1f &#8451;,  NTC resistance: %d &#8486;,  Analog: %d</p>\n"
         "<table><tr>\n"
-          "<form action=\"/set\">\n"
-            "<td><label for=\"duty\">Duty %%:</label></td>\n"
-            "<td colspan=\"2\"><input id=\"duty\", name=\"duty\" type=\"range\" min=\"0\" max=\"100\" value=\"%u\"/></td>\n"
+          "<form action=\"/target\">\n"
+            "<td><label for=\"celsius\">Target</label></td>\n"
+            "<td colspan=\"2\">0&#8451;<input id=\"celsius\", name=\"celsius\" type=\"range\" min=\"0\" max=\"250\" value=\"%u\"/>250&#8451;</td>\n"
+            "<td><button>Set</button></td>\n"
+          "</form></tr><tr>\n"
+          "<form action=\"/duty\">\n"
+            "<td><label for=\"percent\">Duty</label></td>\n"
+            "<td colspan=\"2\">0%%<input id=\"percent\", name=\"percent\" type=\"range\" min=\"0\" max=\"100\" value=\"%u\"/>100 %%</td>\n"
             "<td><button>Set</button></td>\n"
           "</form></tr><tr><td>\n";
   static const char footer[] =
@@ -117,10 +124,10 @@ void send_menu( const char *msg ) {
         "</table>\n"
       "</body>\n"
     "</html>\n";
-  static char page[sizeof(form)+256]; // form + variables
+  static char page[sizeof(form)+100]; // form + variables
 
   size_t len = sizeof(header) + sizeof(footer) - 2;
-  len += snprintf(page, sizeof(page), form, msg, _temp_c, _r_ntc, _a_sum, _duty);
+  len += snprintf(page, sizeof(page), form, msg, _temp_c, _r_ntc, _a_sum, _temp_target, _duty);
 
   web_server.setContentLength(len);
   web_server.send(200, "text/html", header);
@@ -172,13 +179,14 @@ void setup_Webserver() {
   });
 
   // Set duty cycle
-  web_server.on("/set", []() {
-    if( web_server.arg("duty") != "" ) {
-      long i = web_server.arg("duty").toInt();
+  web_server.on("/duty", []() {
+    if( web_server.arg("percent") != "" ) {
+      long i = web_server.arg("percent").toInt();
       if( i >= 0 && i <= 100 ) {
         _duty = (unsigned)i;
-        char msg[10];
-        snprintf(msg, sizeof(msg), "Set: %u", _duty);
+        _fixed_duty = true;
+        char msg[20];
+        snprintf(msg, sizeof(msg), "Set duty: %u", _duty);
         send_menu(msg);
       }
       else {
@@ -186,7 +194,28 @@ void setup_Webserver() {
       }
     }
     else {
-      send_menu("ERROR: Set without duty percentage");
+      send_menu("ERROR: Duty without percentage");
+    }
+    // syslog.log(LOG_INFO, "ON");
+  });
+
+  // Set target temperature
+  web_server.on("/target", []() {
+    if( web_server.arg("celsius") != "" ) {
+      long c = web_server.arg("celsius").toInt();
+      if( c >= 0 && c <= 300 ) {
+        _temp_target = (uint16_t)c;
+        _fixed_duty = false;
+        char msg[40];
+        snprintf(msg, sizeof(msg), "Set target: %u degrees celsius", _temp_target);
+        send_menu(msg);
+      }
+      else {
+        send_menu("ERROR: Set target temperature out of range (-100-300)");
+      }
+    }
+    else {
+      send_menu("ERROR: Target without value");
     }
     // syslog.log(LOG_INFO, "ON");
   });
@@ -194,6 +223,7 @@ void setup_Webserver() {
   // Call this page to see the ESPs firmware version
   web_server.on("/on", []() {
     _duty = 100;
+    _fixed_duty = true;
     send_menu("On");
     // syslog.log(LOG_INFO, "ON");
   });
@@ -201,6 +231,7 @@ void setup_Webserver() {
   // Call this page to see the ESPs firmware version
   web_server.on("/off", []() {
     _duty = 0;
+    _fixed_duty = true;
     send_menu("Off");
     // syslog.log(LOG_INFO, "OFF");
   });
@@ -220,7 +251,7 @@ void setup_Webserver() {
   // Catch all page, gives a hint on valid URLs
   web_server.onNotFound([]() {
     web_server.send(404, "text/plain", "error: use "
-      "/on, /off, /reset, /version, /temperature, /history.bin or "
+      "/on, /off, /reset, /version, /temperature, /history.bin, /duty, /target or "
       "post image to /update\n");
   });
 
@@ -292,6 +323,49 @@ void handleDuty( const unsigned duty ) {
 }
 
 
+void handleControl( const double control, uint16_t &duty ) {
+  if( !_fixed_duty ) {
+    if( control <= 0 ) {
+      duty = 0;
+    }
+    else if( control >= 100 ) {
+      duty = 100;
+    }
+    else {
+      duty = (uint16_t)(control + 0.5); 
+    }
+  }
+}
+
+
+// Hint: make sure the physical relation between control_variable and current_value is as linear as possible
+void handlePid( const double current_value, const double set_point, double &control_variable ) {
+  // TODO PID parameters need tweaking...
+  static const double Kp = PID_K_P; // increase first until just below oscillation occurs
+  static const double Ki = PID_K_I; // increase second to speed up time to reach target
+  static const double Kd = PID_K_D; // increase third to reduce overshoot and noise sensitivity
+
+  static double error_sum = 0;
+  static uint32_t prev_time = 0;
+  static bool first = true;
+
+  double error = set_point - current_value;
+
+  uint32_t now = millis();
+  double delta_t = 0.001 * (now - prev_time);
+  prev_time = now;
+
+  control_variable = Kp * error;
+  if( first ) {
+    first = false; // discard I and D on first call because delta_t is invalid
+  }
+  else if( delta_t > 0 ) {
+    error_sum += error * delta_t;
+    control_variable += Ki * error_sum + Kd * error / delta_t;
+  }
+}
+
+
 void print_temperature_table() {
   const uint32_t rv_10k  = 10000;
   const uint32_t rv_100k = 100000;
@@ -316,12 +390,42 @@ void print_temperature_table() {
 }
 
 
+// quick and dirty while I do not have an oven to play with...
+// cool down linear from 250 to 25 in 12 min
+// heat up at 100% duty linear from 25 to 250 in 2 min
+void simulate_temp( double &temp_c ) {
+  static uint32_t prev = 0;
+  static const double cool_step = (250.0 - 25) / (12 * 60 * 1000); // deg/milli 
+  static const double heat_step = (250.0 - 25) / (2 * 60 * 1000);  // deg/milli 
+
+  uint32_t now = millis();
+  uint32_t elapsed = now - prev;
+
+  if( elapsed < 100 ) {
+    return; // don't update too often
+  }
+
+  prev = now;
+
+  if( elapsed > 1000 ) {
+    return; // first time after switching on or elapsed would be smaller
+  }
+
+  temp_c -= cool_step * elapsed;
+  temp_c += heat_step * _duty / 100 * elapsed;
+}
+
+
 void updateTemperature( const uint32_t r_ntc, double &temp_c ) {
   // only print if measurement decimals change 
   static int16_t t_prev = 0;
 
-  temp_c = 1.0 / (1.0/(273.15+T_n) + log((double)r_ntc/R_n)/B) - 273.15;
-
+  if( _fixed_duty ) {
+    temp_c = 1.0 / (1.0/(273.15+T_n) + log((double)r_ntc/R_n)/B) - 273.15;
+  }
+  else {
+    simulate_temp(temp_c);
+  }
   int16_t temp = (int16_t)(temp_c * 100 + 0.5); // rounded centi celsius
   if( (temp - t_prev) * (temp - t_prev) >= 10 * 10 ) { // only report changes >= 0.1
     Serial.printf("Temperature: %01d.%01d degree Celsius\n", temp/100, (temp/10)%10);
@@ -370,6 +474,41 @@ void handleAnalog( uint32_t &a_sum, uint32_t &r_ntc, double &temp_c ) {
 }
 
 
+void handleFrequency() {
+  static uint32_t start = 0;
+  static uint32_t count = 0;
+
+  count++;
+
+  uint32_t now = millis();
+  if( now - start > 1000 ) {
+    printf("Measuring analog at %u Hz\n", count);
+    start = now;
+    count = 0;
+  }
+}
+
+
+void handleTempHistory( const double temp_c, int16_t t[], const uint16_t t_entries, uint16_t &t_pos ) {
+  static bool first = true;
+  uint16_t temp = (int16_t)(temp_c * 100 + 0.5); 
+  if( first ) {
+    t_pos = t_entries;
+    while( --t_pos > 0 ) {
+      t[t_pos] = -30000; // mark as clearly invalid because below absolute zero
+    }
+    t[t_pos] = temp;
+    first = false;
+  }
+  else {
+    if( ++t_pos >= t_entries ) {
+      t_pos = 0;
+    }
+    t[t_pos] = temp;
+  }
+}
+
+
 void setup() {
   // start with switch off:
   pinMode(SWITCH_PIN, OUTPUT);
@@ -406,45 +545,13 @@ void setup() {
 }
 
 
-void handleFrequency() {
-  static uint32_t start = 0;
-  static uint32_t count = 0;
-
-  count++;
-
-  uint32_t now = millis();
-  if( now - start > 1000 ) {
-    printf("Measuring analog at %u Hz\n", count);
-    start = now;
-    count = 0;
-  }
-}
-
-
-void handleTempHistory( const double temp_c, int16_t t[], const uint16_t t_entries, uint16_t &t_pos ) {
-  static bool first = true;
-  uint16_t temp = (int16_t)(temp_c * 100 + 0.5); 
-  if( first ) {
-    t_pos = t_entries;
-    while( --t_pos > 0 ) {
-      t[t_pos] = -30000; // mark as clearly invalid because below absolute zero
-    }
-    t[t_pos] = temp;
-    first = false;
-  }
-  else {
-    if( ++t_pos >= t_entries ) {
-      t_pos = 0;
-    }
-    t[t_pos] = temp;
-  }
-}
-
-
 void loop() {
   handleFrequency();
   handleAnalog(_a_sum, _r_ntc, _temp_c);
   handleTempHistory(_temp_c, _t, sizeof(_t)/sizeof(*_t), _t_pos);
+  double control;
+  handlePid(_temp_c, _temp_target, control);
+  handleControl(control, _duty);
   handleDuty(_duty);
   handleWifi();
 }

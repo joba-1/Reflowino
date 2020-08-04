@@ -18,7 +18,7 @@
 #include <math.h> // for log()
 
 #ifndef VERSION
-  #define VERSION   NAME " 1.3 " __DATE__ " " __TIME__
+  #define VERSION   NAME " 1.4 " __DATE__ " " __TIME__
 #endif
 
 // Syslog
@@ -31,25 +31,26 @@ ESP8266WebServer web_server(PORT);
 
 ESP8266HTTPUpdateServer esp_updater;
 
-uint16_t duty = 0; // ssr pwm percent
+uint16_t _duty = 0;                 // ssr pwm percent
 
 // Analog read samples
-const uint16_t a_samples = 4000;
-const uint16_t a_max = 1023;
-uint32_t a_sum = 0;        // sum of last analog reads
+const uint16_t A_samples = 4000;
+const uint16_t A_max = 1023;
+uint32_t _a_sum = 0;                // sum of last analog reads
 
 // NTC characteristics (datasheet)
 static const uint32_t B = 3950;
 static const uint32_t R_n = 100000; // Ohm
 static const uint32_t T_n = 25;     // Celsius
 
-static const uint32_t R_v = 8830; // Ohm, voltage divider resistor
+static const uint32_t R_v = 8830;   // Ohm, voltage divider resistor
 
-uint32_t r_ntc = 0;        // Ohm, resistance updated with each analog read
-double temperature_c = 0;  // Celsius, calculated from NTC and R_v
+uint32_t _r_ntc = 0;                // Ohm, resistance updated with each analog read
+double _temp_c = 0;                 // Celsius, calculated from NTC and R_v
 
-int16_t t[8640*2];         // 2 days centicelsius temperature history in 10s intervals
-uint16_t t_pos;
+int16_t _t[8640*2];      // 2 days centicelsius temperature history in 10s intervals
+uint16_t _t_pos;
+
 
 // Default html menu page
 void send_menu( const char *msg ) {
@@ -119,7 +120,7 @@ void send_menu( const char *msg ) {
   static char page[sizeof(form)+256]; // form + variables
 
   size_t len = sizeof(header) + sizeof(footer) - 2;
-  len += snprintf(page, sizeof(page), form, msg, temperature_c, r_ntc, a_sum, duty);
+  len += snprintf(page, sizeof(page), form, msg, _temp_c, _r_ntc, _a_sum, _duty);
 
   web_server.setContentLength(len);
   web_server.send(200, "text/html", header);
@@ -148,20 +149,20 @@ void setup_Webserver() {
 
   web_server.on("/temperature", []() {
     char msg[10];
-    snprintf(msg, sizeof(msg), "%5.1f", temperature_c);
+    snprintf(msg, sizeof(msg), "%5.1f", _temp_c);
     web_server.send(200, "text/plain", msg);
   });
 
   // TODO crashes...
   web_server.on("/history.bin", []() {
     char msg[30];
-    int len = snprintf(msg, sizeof(msg), "int16 centicelsius[%5u]:", sizeof(t)/sizeof(*t));
+    int len = snprintf(msg, sizeof(msg), "int16 centicelsius[%5u]:", sizeof(_t)/sizeof(*_t));
     web_server.setContentLength(CONTENT_LENGTH_UNKNOWN); // len + sizeof(t)
     web_server.send(200, "application/octet-stream", "");
       web_server.sendContent(msg, len);
     unsigned chunk = 1024;
-    char *pos = (char *)t;
-    char *end = pos + sizeof(t);
+    char *pos = (char *)_t;
+    char *end = pos + sizeof(_t);
     while( pos < end - chunk ) {
       web_server.sendContent(pos, chunk);
       pos += chunk;
@@ -175,9 +176,9 @@ void setup_Webserver() {
     if( web_server.arg("duty") != "" ) {
       long i = web_server.arg("duty").toInt();
       if( i >= 0 && i <= 100 ) {
-        duty = (unsigned)i;
+        _duty = (unsigned)i;
         char msg[10];
-        snprintf(msg, sizeof(msg), "Set: %u", duty);
+        snprintf(msg, sizeof(msg), "Set: %u", _duty);
         send_menu(msg);
       }
       else {
@@ -192,14 +193,14 @@ void setup_Webserver() {
 
   // Call this page to see the ESPs firmware version
   web_server.on("/on", []() {
-    duty = 100;
+    _duty = 100;
     send_menu("On");
     // syslog.log(LOG_INFO, "ON");
   });
 
   // Call this page to see the ESPs firmware version
   web_server.on("/off", []() {
-    duty = 0;
+    _duty = 0;
     send_menu("Off");
     // syslog.log(LOG_INFO, "OFF");
   });
@@ -264,7 +265,7 @@ void handleWifi() {
 }
 
 
-void handleDuty( unsigned duty ) {
+void handleDuty( const unsigned duty ) {
   static bool state = LOW;
   static uint32_t since = 0;
 
@@ -297,9 +298,9 @@ void print_temperature_table() {
   double t_10k_prev  = 0.0;
   double t_100k_prev = 0.0;
 
-  for( uint16_t a = 0; a < a_max; a++ ) {
-    uint32_t r_ntc_v10k  = rv_10k  * a / (a_max - a);
-    uint32_t r_ntc_v100k = rv_100k * a / (a_max - a);
+  for( uint16_t a = 0; a < A_max; a++ ) {
+    uint32_t r_ntc_v10k  = rv_10k  * a / (A_max - a);
+    uint32_t r_ntc_v100k = rv_100k * a / (A_max - a);
 
     double t_10k  = 1.0 / (1.0/(273.15+T_n) + log((double)r_ntc_v10k /R_n)/B) - 273.15;
     double t_100k = 1.0 / (1.0/(273.15+T_n) + log((double)r_ntc_v100k/R_n)/B) - 273.15;
@@ -315,13 +316,13 @@ void print_temperature_table() {
 }
 
 
-void updateTemperature() {
+void updateTemperature( const uint32_t r_ntc, double &temp_c ) {
   // only print if measurement decimals change 
   static int16_t t_prev = 0;
 
-  temperature_c = 1.0 / (1.0/(273.15+T_n) + log((double)r_ntc/R_n)/B) - 273.15;
+  temp_c = 1.0 / (1.0/(273.15+T_n) + log((double)r_ntc/R_n)/B) - 273.15;
 
-  int16_t temp = (int16_t)(temperature_c * 100 + 0.5); // rounded centi celsius
+  int16_t temp = (int16_t)(temp_c * 100 + 0.5); // rounded centi celsius
   if( (temp - t_prev) * (temp - t_prev) >= 10 * 10 ) { // only report changes >= 0.1
     Serial.printf("Temperature: %01d.%01d degree Celsius\n", temp/100, (temp/10)%10);
     t_prev = temp;
@@ -329,35 +330,35 @@ void updateTemperature() {
 }
 
 
-void updateResistance() {
-  static const uint32_t Max_sum = (uint32_t)a_max * a_samples;
+void updateResistance( const uint32_t a_sum, uint32_t &r_ntc, double &temp_c ) {
+  static const uint32_t Max_sum = (uint32_t)A_max * A_samples;
 
   r_ntc = (int64_t)R_v * a_sum / (Max_sum - a_sum);
 
-  updateTemperature();
+  updateTemperature(r_ntc, temp_c);
 }
 
 
-void handleAnalog() {
-  static uint16_t a[a_samples] = { 0 }; // last analog reads
-  static uint16_t a_pos = a_samples;    // sample index
+void handleAnalog( uint32_t &a_sum, uint32_t &r_ntc, double &temp_c ) {
+  static uint16_t a[A_samples] = { 0 }; // last analog reads
+  static uint16_t a_pos = A_samples;    // sample index
 
   int value = analogRead(A0);
 
   // first time init
-  if( a_pos == a_samples ) {
+  if( a_pos == A_samples ) {
     while( a_pos-- ) {
       a[a_pos] = (uint16_t)value;
       a_sum += (uint32_t)value;
     }
   }
   else {
-    if( ++a_pos >= a_samples ) {
+    if( ++a_pos >= A_samples ) {
       a_pos = 0;
     }
 
     if( a_pos % 16 == 0 ) {
-      delay(10); // needed for wifi !?
+      delay(10); // now and then A0 hardware is needed for wifi !?
     }
 
     a_sum -= a[a_pos];
@@ -365,7 +366,7 @@ void handleAnalog() {
     a_sum += a[a_pos];
   }
 
-  updateResistance();
+  updateResistance(a_sum, r_ntc, temp_c);
 }
 
 
@@ -420,19 +421,19 @@ void handleFrequency() {
 }
 
 
-void handleTempHistory() {
+void handleTempHistory( const double temp_c, int16_t t[], const uint16_t t_entries, uint16_t &t_pos ) {
   static bool first = true;
-  uint16_t temp = (int16_t)(temperature_c * 100 + 0.5); 
+  uint16_t temp = (int16_t)(temp_c * 100 + 0.5); 
   if( first ) {
-    t_pos = sizeof(t)/sizeof(*t);
+    t_pos = t_entries;
     while( --t_pos > 0 ) {
-      t[t_pos] = -30000;
+      t[t_pos] = -30000; // mark as clearly invalid because below absolute zero
     }
     t[t_pos] = temp;
     first = false;
   }
   else {
-    if( ++t_pos >= sizeof(t)/sizeof(*t) ) {
+    if( ++t_pos >= t_entries ) {
       t_pos = 0;
     }
     t[t_pos] = temp;
@@ -442,8 +443,8 @@ void handleTempHistory() {
 
 void loop() {
   handleFrequency();
-  handleAnalog();
-  handleTempHistory();
-  handleDuty(duty);
+  handleAnalog(_a_sum, _r_ntc, _temp_c);
+  handleTempHistory(_temp_c, _t, sizeof(_t)/sizeof(*_t), _t_pos);
+  handleDuty(_duty);
   handleWifi();
 }

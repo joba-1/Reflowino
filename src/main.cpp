@@ -32,7 +32,6 @@ ESP8266WebServer web_server(PORT);
 ESP8266HTTPUpdateServer esp_updater;
 
 uint16_t _duty = 0;                 // ssr pwm percent
-bool _fixed_duty = true;           // true: decouple from temperature control
 
 // Analog read samples
 const uint16_t A_samples = A_SAMPLES;
@@ -184,7 +183,6 @@ void setup_Webserver() {
       long i = web_server.arg("percent").toInt();
       if( i >= 0 && i <= 100 ) {
         _duty = (unsigned)i;
-        _fixed_duty = true;
         char msg[20];
         snprintf(msg, sizeof(msg), "Set duty: %u", _duty);
         send_menu(msg);
@@ -205,7 +203,9 @@ void setup_Webserver() {
       long c = web_server.arg("celsius").toInt();
       if( c >= 0 && c <= 300 ) {
         _temp_target = (uint16_t)c;
-        _fixed_duty = false;
+        if( _temp_target == 0 ) {
+          _duty = 0;
+        }
         char msg[40];
         snprintf(msg, sizeof(msg), "Set target: %u degrees celsius", _temp_target);
         send_menu(msg);
@@ -223,7 +223,6 @@ void setup_Webserver() {
   // Call this page to see the ESPs firmware version
   web_server.on("/on", []() {
     _duty = 100;
-    _fixed_duty = true;
     send_menu("On");
     // syslog.log(LOG_INFO, "ON");
   });
@@ -231,7 +230,6 @@ void setup_Webserver() {
   // Call this page to see the ESPs firmware version
   web_server.on("/off", []() {
     _duty = 0;
-    _fixed_duty = true;
     send_menu("Off");
     // syslog.log(LOG_INFO, "OFF");
   });
@@ -304,6 +302,7 @@ void handleDuty( const unsigned duty ) {
   if( (now - since) >= DUTY_CYCLE_MS ) {
     since = now;
   }
+
   if( (now - since) >= (((uint32_t)duty * DUTY_CYCLE_MS) / 100) ) {
     if( state == HIGH ) {
       state = LOW;

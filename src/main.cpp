@@ -324,22 +324,20 @@ void handleDuty( const unsigned duty ) {
 
 
 void handleControl( const double control, uint16_t &duty ) {
-  if( !_fixed_duty ) {
-    if( control <= 0 ) {
-      duty = 0;
-    }
-    else if( control >= 100 ) {
-      duty = 100;
-    }
-    else {
-      duty = (uint16_t)(control + 0.5); 
-    }
+  if( control <= 0 ) {
+    duty = 0;
+  }
+  else if( control >= 100 ) {
+    duty = 100;
+  }
+  else {
+    duty = (uint16_t)(control + 0.5); 
   }
 }
 
 
 // Hint: make sure the physical relation between control_variable and current_value is as linear as possible
-void handlePid( const double current_value, const double set_point, double &control_variable ) {
+void handlePid( const double current_value, const double set_point, const double min_error, const double max_sum, double &control_variable ) {
   // TODO PID parameters need tweaking...
   static const double Kp = PID_K_P; // increase first until just below oscillation occurs
   static const double Ki = PID_K_I; // increase second to speed up time to reach target
@@ -347,21 +345,26 @@ void handlePid( const double current_value, const double set_point, double &cont
 
   static double error_sum = 0;
   static uint32_t prev_time = 0;
-  static bool first = true;
 
   double error = set_point - current_value;
 
-  uint32_t now = millis();
-  double delta_t = 0.001 * (now - prev_time);
-  prev_time = now;
-
-  control_variable = Kp * error;
-  if( first ) {
-    first = false; // discard I and D on first call because delta_t is invalid
-  }
-  else if( delta_t > 0 ) {
-    error_sum += error * delta_t;
-    control_variable += Ki * error_sum + Kd * error / delta_t;
+  if( (error > 0 && error > min_error) || (error < 0 && error < -min_error) ) { // ignore minimal deviations (probably noise)
+    uint32_t now = millis();
+    double delta_t = 0.001 * (now - prev_time);
+    prev_time = now;
+    if( delta_t > 1 ) { // long time no see. Better start over
+      error_sum = 0;
+      control_variable = 0;
+    }
+    else {
+      control_variable = Kp * error;
+      if( delta_t > 0 ) { // ignore zero time delta if called too fast
+        if( (error > 0 && Ki * error_sum < max_sum) || (error < 0 && Ki * error_sum > -max_sum) ) { // limit wind up
+          error_sum += error * delta_t;
+        }
+        control_variable += Ki * error_sum + Kd * error / delta_t;
+      }
+    }
   }
 }
 
@@ -428,7 +431,7 @@ void updateTemperature( const uint32_t r_ntc, double &temp_c ) {
   }
   int16_t temp = (int16_t)(temp_c * 100 + 0.5); // rounded centi celsius
   if( (temp - t_prev) * (temp - t_prev) >= 10 * 10 ) { // only report changes >= 0.1
-    Serial.printf("Temperature: %01d.%01d degree Celsius\n", temp/100, (temp/10)%10);
+    // Serial.printf("Temperature: %01d.%01d degree Celsius\n", temp/100, (temp/10)%10);
     t_prev = temp;
   }
 }
@@ -546,12 +549,19 @@ void setup() {
 
 
 void loop() {
-  handleFrequency();
+  // handleFrequency();
   handleAnalog(_a_sum, _r_ntc, _temp_c);
   handleTempHistory(_temp_c, _t, sizeof(_t)/sizeof(*_t), _t_pos);
-  double control;
-  handlePid(_temp_c, _temp_target, control);
-  handleControl(control, _duty);
+
+  static uint32_t prev = 0;
+  uint32_t now = millis();
+  if( (!_fixed_duty) && (now - prev > 100) ) {
+    double control;
+    handlePid(_temp_c, _temp_target, 0.2, 100, control);
+    handleControl(control, _duty);
+    Serial.printf("PID: current=%5.1f, set=%3u, control=%5.1f, duty=%3u\n", _temp_c, _temp_target, control, _duty);
+    prev = now;
+  }
   handleDuty(_duty);
   handleWifi();
 }

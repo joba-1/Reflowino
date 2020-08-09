@@ -29,9 +29,9 @@
 #define DUTY_CYCLE_MS    1000
 
 // PID stuff
-#define PID_K_P          0.8
+#define PID_K_P          0.6
 #define PID_K_I          0.1
-#define PID_K_D          0.01
+#define PID_K_D          0.8
 
 // Analog samples for averaging
 #define A_SAMPLES        4000

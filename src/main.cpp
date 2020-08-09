@@ -48,7 +48,7 @@ static const uint32_t R_v = NTC_R_V; // Ohm, voltage divider resistor for NTC
 
 uint32_t _r_ntc = 0;                // Ohm, resistance updated with each analog read
 double _temp_c = 0;                 // Celsius, calculated from NTC and R_v
-uint16_t _temp_target = 100;        // adjust _duty to reach this temperature
+uint16_t _temp_target = 0;          // adjust _duty to reach this temperature
 
 int16_t _t[8640];      // 1 day centicelsius temperature history in 10s intervals
 uint16_t _t_pos;
@@ -549,15 +549,19 @@ void loop() {
   handleTempHistory(_temp_c, _t, sizeof(_t)/sizeof(*_t), _t_pos);
 
   static uint32_t prev = 0;
+  static uint16_t count = 0;
   uint32_t now = millis();
-  if( (!_fixed_duty) && (now - prev > 100) ) {
+  if( (_temp_target) && (now - prev > 100) ) {
     double control;
     handlePid(_temp_c, _temp_target, 0.2, 100, control);
     handleControl(control, _duty);
     char msg[80];
     snprintf(msg, sizeof(msg), "Temp=%5.1f, Set=%3u, Control=%5.1f, Duty=%3u", _temp_c, _temp_target, control, _duty);
     Serial.println(msg);
-    syslog.log(msg);
+    if( count-- == 0 ) {
+      syslog.log(msg);
+      count = 100;
+    }
     prev = now;
   }
   handleDuty(_duty);

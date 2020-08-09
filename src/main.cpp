@@ -18,12 +18,12 @@
 #include <math.h> // for log()
 
 #ifndef VERSION
-  #define VERSION   NAME " 1.5 " __DATE__ " " __TIME__
+  #define VERSION   NAME " 1.6 " __DATE__ " " __TIME__
 #endif
 
 // Syslog
-// WiFiUDP udp;
-//Syslog syslog(udp, SYSLOG_PROTO_IETF);
+WiFiUDP udp;
+Syslog syslog(udp, SYSLOG_PROTO_IETF);
 
 Adafruit_NeoPixel pixels = Adafruit_NeoPixel(NUM_PIXELS, PIXEL_PIN, NEO_CONFIG);
 
@@ -258,7 +258,7 @@ void setup_Webserver() {
   web_server.begin();
 
   MDNS.addService("http", "tcp", PORT);
-  // syslog.logf(LOG_NOTICE, "Serving HTTP on port %d", PORT);
+  syslog.logf(LOG_NOTICE, "Serving HTTP on port %d", PORT);
 }
 
 
@@ -272,7 +272,7 @@ void handleWifi() {
       digitalWrite(ONLINE_LED_PIN, LOW);
       Serial.printf("WLAN '%s' connected with IP ", SSID);
       Serial.println(WiFi.localIP());
-      // syslog.logf(LOG_NOTICE, "WLAN '%s' IP %s", SSID, WiFi.localIP().toString().c_str());
+      syslog.logf(LOG_NOTICE, "WLAN '%s' IP %s", SSID, WiFi.localIP().toString().c_str());
 
       MDNS.begin(NAME);
 
@@ -300,23 +300,19 @@ void handleDuty( const unsigned duty ) {
   static bool state = LOW;
   static uint32_t since = 0;
 
-  if( duty == 100 && state == LOW ) {
-    state = HIGH;
-    digitalWrite(SWITCH_PIN, state);
+  uint32_t now = millis();
+  if( (now - since) >= DUTY_CYCLE_MS ) {
+    since = now;
   }
-  else if( duty == 0 && state == HIGH ) {
-    state = LOW;
-    digitalWrite(SWITCH_PIN, state);
+  if( (now - since) >= (((uint32_t)duty * DUTY_CYCLE_MS) / 100) ) {
+    if( state == HIGH ) {
+      state = LOW;
+      digitalWrite(SWITCH_PIN, state);
+    }
   }
   else {
-    uint32_t now = millis();
-    if( (now - since) > DUTY_CYCLE_MS ) {
+    if( state == LOW ) {
       state = HIGH;
-      digitalWrite(SWITCH_PIN, state);
-      since = now;
-    }
-    else if( (now - since) > (((uint32_t)duty * DUTY_CYCLE_MS) / 100) ) {
-      state = LOW;
       digitalWrite(SWITCH_PIN, state);
     }
   }
@@ -523,10 +519,10 @@ void setup() {
   setup_Wifi();
 
   // Syslog setup
-  // syslog.server(SYSLOG_SERVER, SYSLOG_PORT);
-  // syslog.deviceHostname(NAME);
-  // syslog.appName("Joba1");
-  // syslog.defaultPriority(LOG_KERN);
+  syslog.server(SYSLOG_SERVER, SYSLOG_PORT);
+  syslog.deviceHostname(NAME);
+  syslog.appName("Joba1");
+  syslog.defaultPriority(LOG_KERN);
 
   // Init the neopixels
   pixels.begin();

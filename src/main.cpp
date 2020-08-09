@@ -447,7 +447,7 @@ void handleAnalog( uint32_t &a_sum, uint32_t &r_ntc, double &temp_c ) {
   static uint16_t a[A_samples] = { 0 }; // last analog reads
   static uint16_t a_pos = A_samples;    // sample index
 
-  if( millis() % 1000 > 10 ) { // now and then release analog for wifi
+  if( millis() % 100 > 10 ) { // now and then release analog for wifi
     int value = analogRead(A0);
 
     // first time init

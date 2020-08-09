@@ -25,7 +25,7 @@
 #define ONLINE_LED_PIN   D4
 
 // Switch stuff
-#define SWITCH_PIN       D3
+#define SWITCH_PIN       D8
 #define DUTY_CYCLE_MS    1000
 
 // PID stuff

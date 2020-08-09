@@ -419,12 +419,13 @@ void updateTemperature( const uint32_t r_ntc, double &temp_c ) {
   // only print if measurement decimals change 
   static int16_t t_prev = 0;
 
-  if( _fixed_duty ) {
-    temp_c = 1.0 / (1.0/(273.15+T_n) + log((double)r_ntc/R_n)/B) - 273.15;
-  }
-  else {
-    simulate_temp(temp_c);
-  }
+  // if( _fixed_duty ) {
+  temp_c = 1.0 / (1.0/(273.15+T_n) + log((double)r_ntc/R_n)/B) - 273.15;
+  // }
+  // else {
+  //   simulate_temp(temp_c);
+  // }
+
   int16_t temp = (int16_t)(temp_c * 100 + 0.5); // rounded centi celsius
   if( (temp - t_prev) * (temp - t_prev) >= 10 * 10 ) { // only report changes >= 0.1
     // Serial.printf("Temperature: %01d.%01d degree Celsius\n", temp/100, (temp/10)%10);
@@ -555,7 +556,10 @@ void loop() {
     double control;
     handlePid(_temp_c, _temp_target, 0.2, 100, control);
     handleControl(control, _duty);
-    Serial.printf("PID: current=%5.1f, set=%3u, control=%5.1f, duty=%3u\n", _temp_c, _temp_target, control, _duty);
+    char msg[80];
+    snprintf(msg, sizeof(msg), "Temp=%5.1f, Set=%3u, Control=%5.1f, Duty=%3u", _temp_c, _temp_target, control, _duty);
+    Serial.println(msg);
+    syslog.log(msg);
     prev = now;
   }
   handleDuty(_duty);

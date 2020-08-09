@@ -447,30 +447,28 @@ void handleAnalog( uint32_t &a_sum, uint32_t &r_ntc, double &temp_c ) {
   static uint16_t a[A_samples] = { 0 }; // last analog reads
   static uint16_t a_pos = A_samples;    // sample index
 
-  int value = analogRead(A0);
+  if( millis() % 1000 > 10 ) { // now and then release analog for wifi
+    int value = analogRead(A0);
 
-  // first time init
-  if( a_pos == A_samples ) {
-    while( a_pos-- ) {
+    // first time init
+    if( a_pos == A_samples ) {
+      while( a_pos-- ) {
+        a[a_pos] = (uint16_t)value;
+        a_sum += (uint32_t)value;
+      }
+    }
+    else {
+      if( ++a_pos >= A_samples ) {
+        a_pos = 0;
+      }
+
+      a_sum -= a[a_pos];
       a[a_pos] = (uint16_t)value;
-      a_sum += (uint32_t)value;
+      a_sum += a[a_pos];
     }
+
+    updateResistance(a_sum, r_ntc, temp_c);
   }
-  else {
-    if( ++a_pos >= A_samples ) {
-      a_pos = 0;
-    }
-
-    if( a_pos % 16 == 0 ) {
-      delay(10); // now and then A0 hardware is needed for wifi !?
-    }
-
-    a_sum -= a[a_pos];
-    a[a_pos] = (uint16_t)value;
-    a_sum += a[a_pos];
-  }
-
-  updateResistance(a_sum, r_ntc, temp_c);
 }
 
 

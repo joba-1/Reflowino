@@ -91,3 +91,12 @@ switch on if below (Tset - lower tolerance) and switch off if above (Tset + uppe
 Choose tolerances such that T is close enough to Tset (-> low tolerances), switching is rare enough (-> high tolerances) and mean of T over an on/off cycle is as close as possible to Tset (-> since cooling is slower than heating, lower tolerance will be less than high tolerance). 
 
 But since I can switch on/off easily and relatively fast with SSR I can also do a kind of slow PWM and use that for PID control. Should result in T following Tset with less oscillation. Maybe that means even less stress on material, but could also mean more EMV due to more high power switching.
+
+## Used Hardware
+
+* [Steinborg Mini Backofen 13 Liter | Timer | herhausnehmbares Krümelblech | 1200 Watt](https://www.amazon.de/dp/B07FK34XQH/ref=cm_sw_r_cp_apap_LjMqHc7jB2WBf)
+* [Haobase Temperatur Controller AC 24V-380V Output Solid State Relais 25 A](https://www.amazon.de/dp/B01FLG3X4M?ref=ppx_pop_mob_ap_share)
+* [LEORX NTC 3950 100k Thermistoren mit Teflon 5 PCS](https://www.amazon.de/dp/B01AA7U82C?ref=ppx_pop_mob_ap_share)
+
+Pretty good oven for that purpose. Could keep all controls (Max tmperature, heating from bottom and/or top, 60min timer).
+ESP8266 is only on while timer is on.

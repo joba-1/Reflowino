@@ -573,7 +573,7 @@ void loop() {
     snprintf(msg, sizeof(msg), "Temp=%5.1f, Set=%3u, Control=%5.1f, Duty=%3u", _temp_c, _temp_target, control, _duty);
     Serial.println(msg);
     if( count-- == 0 ) {
-      syslog.log(msg);
+      syslog.log(LOG_INFO, msg);
       count = 100;
     }
     prev = now;

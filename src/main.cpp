@@ -252,7 +252,9 @@ void setup_Webserver() {
 
   // This page configures all settings (/cfg?name=value{&name=value...})
   web_server.on("/", []() {
-    send_menu("Welcome");
+    char msg[80];
+    snprintf(msg, sizeof(msg), "Welcome! (Set %u&#8451;, Duty %u%%%s)", _temp_target, _duty, _fixed_duty ? " locked" : "");
+    send_menu(msg);
   });
 
   // Catch all page, gives a hint on valid URLs
@@ -582,4 +584,5 @@ void loop() {
   }
   handleDuty(_duty);
   handleWifi();
+  delay(1);
 }

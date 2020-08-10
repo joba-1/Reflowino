@@ -196,7 +196,7 @@ void setup_Webserver() {
     else {
       send_menu("ERROR: Duty without percentage");
     }
-    // syslog.log(LOG_INFO, "ON");
+    syslog.logf(LOG_NOTICE, "DUTY %u", _duty);
   });
 
   // Set target temperature
@@ -223,7 +223,7 @@ void setup_Webserver() {
     else {
       send_menu("ERROR: Target without value");
     }
-    // syslog.log(LOG_INFO, "ON");
+    syslog.logf(LOG_NOTICE, "TARGET %u", _temp_target);
   });
 
   // Call this page to see the ESPs firmware version
@@ -231,7 +231,7 @@ void setup_Webserver() {
     _duty = 100;
     _fixed_duty = true;
     send_menu("On");
-    // syslog.log(LOG_INFO, "ON");
+    syslog.log(LOG_NOTICE, "ON");
   });
 
   // Call this page to see the ESPs firmware version
@@ -239,11 +239,12 @@ void setup_Webserver() {
     _duty = 0;
     _fixed_duty = true;
     send_menu("Off");
-    // syslog.log(LOG_INFO, "OFF");
+    syslog.log(LOG_NOTICE, "OFF");
   });
 
   // Call this page to reset the ESP
   web_server.on("/reset", []() {
+    syslog.log(LOG_NOTICE, "RESET");
     send_menu("Resetting...");
     delay(200);
     ESP.restart();
@@ -277,6 +278,7 @@ void handleWifi() {
     if( first_connect ) {
       first_connect = false;
       if( _fixed_duty && _duty == 100 ) { // doubler check
+        syslog.log(LOG_NOTICE, "WLAN on -> oven OFF");
         _duty = 0; // now controlled via WLAN
       }
     }

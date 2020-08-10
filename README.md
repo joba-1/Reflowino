@@ -6,19 +6,22 @@ use an ESP8266, an ADS1115, two NTCs, an SSR and a cheap electrical toaster gril
 
 Work in progress.
 
-* a pwm style duty cycle of the SSR can be controlled via webserver
+* Built into oven. Works fine. Currently no ADS1115 but internal A0 and only one NTC.
+* Temperature can be set via webpage and is maintained by pid loop.
+* PID parameters need optimization. 20% overshoot.
+* A pwm style fixed duty cycle of the SSR can be controlled via webpage
 * OTA is working to avoid touching high voltage stuff
-* Syslog does not work. Loosing Wifi connection if I enable it :(
-* Theory for temperature measuring is mostly done (see below). Waiting for ADS1115...
+* Syslog works. Needed to give A0 to WIFI ~10ms within 40ms
+* Theory for temperature measuring is done (see below). Maybe needs a bit more calibration.
 
-## TODO
-* verify temperature measurement actually works
-* feedback loop to follow set temperature
-* define temperature profile via web page
-* means to store/retrieve profiles (could be spiffs, EEPROM, MQTT persistent topics, ...)
+## Todo
+
+* PID parameters via webpage
+* Define temperature profile via web page
+* eans to store/retrieve profiles (could be spiffs, EEPROM, MQTT persistent topics, ...)
 * Provide status via Neopixel colors, mqtt, webpage
 
-## NTC Temperature measurement
+## NTC Temperature Measurement
 
 Formula for getting temperature in K from measuring Rntc
 

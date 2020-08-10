@@ -31,7 +31,8 @@ ESP8266WebServer web_server(PORT);
 
 ESP8266HTTPUpdateServer esp_updater;
 
-uint16_t _duty = 0;                 // ssr pwm percent
+uint16_t _duty = 100;               // ssr pwm percent. Make oven useful without WLAN
+bool _fixed_duty = true;            // true: decouple from temperature control
 
 // Analog read samples
 const uint16_t A_samples = A_SAMPLES;
@@ -183,6 +184,7 @@ void setup_Webserver() {
       long i = web_server.arg("percent").toInt();
       if( i >= 0 && i <= 100 ) {
         _duty = (unsigned)i;
+        _fixed_duty = true;
         char msg[20];
         snprintf(msg, sizeof(msg), "Set duty: %u", _duty);
         send_menu(msg);
@@ -205,6 +207,10 @@ void setup_Webserver() {
         _temp_target = (uint16_t)c;
         if( _temp_target == 0 ) {
           _duty = 0;
+          _fixed_duty = true;
+        }
+        else {
+          _fixed_duty = false;
         }
         char msg[40];
         snprintf(msg, sizeof(msg), "Set target: %u degrees celsius", _temp_target);
@@ -223,6 +229,7 @@ void setup_Webserver() {
   // Call this page to see the ESPs firmware version
   web_server.on("/on", []() {
     _duty = 100;
+    _fixed_duty = true;
     send_menu("On");
     // syslog.log(LOG_INFO, "ON");
   });
@@ -230,6 +237,7 @@ void setup_Webserver() {
   // Call this page to see the ESPs firmware version
   web_server.on("/off", []() {
     _duty = 0;
+    _fixed_duty = true;
     send_menu("Off");
     // syslog.log(LOG_INFO, "OFF");
   });
@@ -263,8 +271,15 @@ void setup_Webserver() {
 // Handle online web updater, initialize it after Wifi connection is established
 void handleWifi() {
   static bool updater_needs_setup = true;
+  static bool first_connect = true;
 
   if( WiFi.status() == WL_CONNECTED ) {
+    if( first_connect ) {
+      first_connect = false;
+      if( _fixed_duty && _duty == 100 ) { // doubler check
+        _duty = 0; // now controlled via WLAN
+      }
+    }
     if( updater_needs_setup ) {
       // Init once after connection is (re)established
       digitalWrite(ONLINE_LED_PIN, LOW);
@@ -550,7 +565,7 @@ void loop() {
   static uint32_t prev = 0;
   static uint16_t count = 0;
   uint32_t now = millis();
-  if( (_temp_target) && (now - prev > 100) ) {
+  if( (_temp_target && !_fixed_duty) && (now - prev > 100) ) {
     double control;
     handlePid(_temp_c, _temp_target, 0.2, 100, control);
     handleControl(control, _duty);

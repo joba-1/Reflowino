@@ -18,7 +18,7 @@
 #include <math.h> // for log()
 
 #ifndef VERSION
-  #define VERSION   NAME " 1.8 " __DATE__ " " __TIME__
+  #define VERSION   NAME " 1.9 " __DATE__ " " __TIME__
 #endif
 
 // Syslog

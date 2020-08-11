@@ -6,19 +6,22 @@ use an ESP8266, an ADS1115, two NTCs, an SSR and a cheap electrical toaster gril
 
 Work in progress.
 
-* a pwm style duty cycle of the SSR can be controlled via webserver
+* Built into oven. Works fine. Currently no ADS1115 but internal A0 and only one NTC.
+* Temperature can be set via webpage and is maintained by pid loop.
+* PID parameters need optimization. 20% overshoot.
+* A pwm style fixed duty cycle of the SSR can be controlled via webpage
 * OTA is working to avoid touching high voltage stuff
-* Syslog does not work. Loosing Wifi connection if I enable it :(
-* Theory for temperature measuring is mostly done (see below). Waiting for ADS1115...
+* Syslog works. Needed to give A0 to WIFI ~10ms within 40ms
+* Theory for temperature measuring is done (see below). Maybe needs a bit more calibration.
 
-## TODO
-* verify temperature measurement actually works
-* feedback loop to follow set temperature
-* define temperature profile via web page
-* means to store/retrieve profiles (could be spiffs, EEPROM, MQTT persistent topics, ...)
+## Todo
+
+* PID parameters via webpage
+* Define temperature profile via web page
+* eans to store/retrieve profiles (could be spiffs, EEPROM, MQTT persistent topics, ...)
 * Provide status via Neopixel colors, mqtt, webpage
 
-## NTC Temperature measurement
+## NTC Temperature Measurement
 
 Formula for getting temperature in K from measuring Rntc
 
@@ -88,3 +91,12 @@ switch on if below (Tset - lower tolerance) and switch off if above (Tset + uppe
 Choose tolerances such that T is close enough to Tset (-> low tolerances), switching is rare enough (-> high tolerances) and mean of T over an on/off cycle is as close as possible to Tset (-> since cooling is slower than heating, lower tolerance will be less than high tolerance). 
 
 But since I can switch on/off easily and relatively fast with SSR I can also do a kind of slow PWM and use that for PID control. Should result in T following Tset with less oscillation. Maybe that means even less stress on material, but could also mean more EMV due to more high power switching.
+
+## Used Hardware
+
+* [Steinborg Mini Backofen 13 Liter | Timer | herhausnehmbares Krümelblech | 1200 Watt](https://www.amazon.de/dp/B07FK34XQH/ref=cm_sw_r_cp_apap_LjMqHc7jB2WBf)
+* [Haobase Temperatur Controller AC 24V-380V Output Solid State Relais 25 A](https://www.amazon.de/dp/B01FLG3X4M?ref=ppx_pop_mob_ap_share)
+* [LEORX NTC 3950 100k Thermistoren mit Teflon 5 PCS](https://www.amazon.de/dp/B01AA7U82C?ref=ppx_pop_mob_ap_share)
+
+Pretty good oven for that purpose. Could keep all controls (Max tmperature, heating from bottom and/or top, 60min timer).
+ESP8266 is only on while timer is on.

@@ -18,7 +18,7 @@
 #include <math.h> // for log()
 
 #ifndef VERSION
-  #define VERSION   NAME " 1.9 " __DATE__ " " __TIME__
+  #define VERSION   NAME " 2.0 " __DATE__ " " __TIME__
 #endif
 
 // Syslog
@@ -50,6 +50,12 @@ uint32_t _r_ntc = 0;                // Ohm, resistance updated with each analog 
 double _temp_c = 0;                 // Celsius, calculated from NTC and R_v
 uint16_t _temp_target = 0;          // adjust _duty to reach this temperature
 
+// PID stuff
+double _pid_kp = PID_K_P;
+double _pid_ki = PID_K_I;
+double _pid_kd = PID_K_D;
+
+// Temperature history
 int16_t _t[8640];      // 1 day centicelsius temperature history in 10s intervals
 uint16_t _t_pos;
 
@@ -99,13 +105,29 @@ void send_menu( const char *msg ) {
         "<p>Temperature: %5.1f &#8451;,  NTC resistance: %d &#8486;,  Analog: %d</p>\n"
         "<table><tr>\n"
           "<form action=\"/target\" mode=\"POST\">\n"
-            "<td><label for=\"celsius\">Target</label></td>\n"
-            "<td colspan=\"2\">0&#8451;<input id=\"celsius\", name=\"celsius\" type=\"range\" min=\"0\" max=\"250\" value=\"%u\"/>250&#8451;</td>\n"
+            "<td><label for=\"celsius\">Target</label></td><td>%u&#8451;</td>\n"
+            "<td>0&#8451;</td><td colspan=\"2\"><input id=\"celsius\", name=\"celsius\" type=\"range\" min=\"0\" max=\"250\" value=\"%u\"/></td><td>250&#8451;</td>\n"
             "<td><button>Set</button></td>\n"
           "</form></tr><tr>\n"
           "<form action=\"/duty\" mode=\"POST\">\n"
-            "<td><label for=\"percent\">Duty</label></td>\n"
-            "<td colspan=\"2\">0%%<input id=\"percent\", name=\"percent\" type=\"range\" min=\"0\" max=\"100\" value=\"%u\"/>100 %%</td>\n"
+            "<td><label for=\"percent\">Duty</label></td><td>%u%%</td>\n"
+            "<td>0%%</td><td colspan=\"2\"><input id=\"percent\", name=\"percent\" type=\"range\" min=\"0\" max=\"100\" value=\"%u\"/></td><td>100%%</td>\n"
+            "<td><button>Set</button></td>\n"
+          "</form></tr><tr>\n"
+          "<td colspan=\"2\">PID Parameters</td></tr><tr>\n"
+          "<form action=\"/kp\" mode=\"POST\">\n"
+            "<td><label for=\"kp\">Kp</label></td><td>%4.2f</td>\n"
+            "<td>0.00</td><td colspan=\"2\"><input id=\"kp\", name=\"kp\" type=\"range\" min=\"0.00\" max=\"10.00\" step=\"0.01\" value=\"%4.2f\"/></td><td>10.00</td>\n"
+            "<td><button>Set</button></td>\n"
+          "</form></tr><tr>\n"
+          "<form action=\"/ki\" mode=\"POST\">\n"
+            "<td><label for=\"ki\">Ki</label></td><td>%4.2f</td>\n"
+            "<td>0.00</td><td colspan=\"2\"><input id=\"ki\", name=\"ki\" type=\"range\" min=\"0.00\" max=\"10.00\" step=\"0.01\" value=\"%4.2f\"/></td><td>10.00</td>\n"
+            "<td><button>Set</button></td>\n"
+          "</form></tr><tr>\n"
+          "<form action=\"/kd\" mode=\"POST\">\n"
+            "<td><label for=\"kd\">Kd</label></td><td>%4.2f</td>\n"
+            "<td>0.00</td><td colspan=\"2\"><input id=\"kd\", name=\"kd\" type=\"range\" min=\"0.00\" max=\"10.00\" step=\"0.01\" value=\"%4.2f\"/></td><td>10.00</td>\n"
             "<td><button>Set</button></td>\n"
           "</form></tr><tr><td>\n";
   static const char footer[] =
@@ -127,7 +149,8 @@ void send_menu( const char *msg ) {
   static char page[sizeof(form)+100]; // form + variables
 
   size_t len = sizeof(header) + sizeof(footer) - 2;
-  len += snprintf(page, sizeof(page), form, msg, _temp_c, _r_ntc, _a_sum, _temp_target, _duty);
+  len += snprintf(page, sizeof(page), form, msg, _temp_c, _r_ntc, _a_sum, 
+    _temp_target, _temp_target, _duty, _duty, _pid_kp, _pid_kp, _pid_ki, _pid_ki, _pid_kd, _pid_kd);
 
   web_server.setContentLength(len);
   web_server.send(200, "text/html", header);
@@ -224,6 +247,66 @@ void setup_Webserver() {
       send_menu("ERROR: Target without value");
     }
     syslog.logf(LOG_NOTICE, "TARGET %u", _temp_target);
+  });
+
+  // Set pid Kp
+  web_server.on("/kp", []() {
+    if( web_server.arg("kp") != "" ) {
+      double kp = web_server.arg("kp").toDouble();
+      if( kp >= 0.0 && kp <= 10.0 ) {
+        _pid_kp = kp; // TODO: store in EPROM
+        char msg[40];
+        snprintf(msg, sizeof(msg), "Set Kp: %5.2f", _pid_kp);
+        send_menu(msg);
+      }
+      else {
+        send_menu("ERROR: Set Kp out of range (0.0-10.0)");
+      }
+    }
+    else {
+      send_menu("ERROR: Kp without value");
+    }
+    syslog.logf(LOG_NOTICE, "Kp %5.2f", _pid_kp);
+  });
+
+  // Set pid Ki
+  web_server.on("/ki", []() {
+    if( web_server.arg("ki") != "" ) {
+      double ki = web_server.arg("ki").toDouble();
+      if( ki >= 0.0 && ki <= 10.0 ) {
+        _pid_ki = ki; // TODO: store in EPROM
+        char msg[40];
+        snprintf(msg, sizeof(msg), "Set Ki: %5.2f", _pid_ki);
+        send_menu(msg);
+      }
+      else {
+        send_menu("ERROR: Set Ki out of range (0.0-10.0)");
+      }
+    }
+    else {
+      send_menu("ERROR: Ki without value");
+    }
+    syslog.logf(LOG_NOTICE, "Ki %5.2f", _pid_ki);
+  });
+
+  // Set pid Kd
+  web_server.on("/kd", []() {
+    if( web_server.arg("kd") != "" ) {
+      double kd = web_server.arg("kd").toDouble();
+      if( kd >= 0.0 && kd <= 10.0 ) {
+        _pid_kd = kd; // TODO: store in EPROM
+        char msg[40];
+        snprintf(msg, sizeof(msg), "Set Kd: %5.2f", _pid_kd);
+        send_menu(msg);
+      }
+      else {
+        send_menu("ERROR: Set Kd out of range (0.0-10.0)");
+      }
+    }
+    else {
+      send_menu("ERROR: Kd without value");
+    }
+    syslog.logf(LOG_NOTICE, "Kd %5.2f", _pid_kd);
   });
 
   // Call this page to see the ESPs firmware version
@@ -352,11 +435,6 @@ void handleControl( const double control, uint16_t &duty ) {
 
 // Hint: make sure the physical relation between control_variable and current_value is as linear as possible
 void handlePid( const double current_value, const double set_point, const double min_error, const double max_sum, double &control_variable ) {
-  // TODO PID parameters need tweaking...
-  static const double Kp = PID_K_P; // increase first until just below oscillation occurs
-  static const double Ki = PID_K_I; // increase second to speed up time to reach target
-  static const double Kd = PID_K_D; // increase third to reduce overshoot and noise sensitivity
-
   static double error_sum = 0;
   static uint32_t prev_time = 0;
 
@@ -366,17 +444,17 @@ void handlePid( const double current_value, const double set_point, const double
     uint32_t now = millis();
     double delta_t = 0.001 * (now - prev_time);
     prev_time = now;
-    if( delta_t > 1 ) { // long time no see. Better start over
-      error_sum = 0;
+    if( delta_t > 1 ) { // long time no see:
+      error_sum = 0;    // ...better start over without wind up
       control_variable = 0;
     }
     else {
-      control_variable = Kp * error;
+      control_variable = _pid_kp * error;
       if( delta_t > 0 ) { // ignore zero time delta if called too fast
-        if( (error > 0 && Ki * error_sum < max_sum) || (error < 0 && Ki * error_sum > -max_sum) ) { // limit wind up
+        if( (error > 0 && _pid_ki * error_sum < max_sum) || (error < 0 && _pid_ki * error_sum > -max_sum) ) { // limit wind up
           error_sum += error * delta_t;
         }
-        control_variable += Ki * error_sum + Kd * error / delta_t;
+        control_variable += _pid_ki * error_sum + _pid_kd * error / delta_t;
       }
     }
   }
